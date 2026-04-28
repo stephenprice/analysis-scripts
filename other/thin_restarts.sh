@@ -21,7 +21,7 @@ All inputs are prompted interactively:
   - Start and end year (YYYY)
   - Month to retain (1–12; all other months in range are candidates for moving)
   - Dry-run mode (lists files to move/keep without touching anything)
-  
+
 Recognised E3SM components (detected from filename tokens):
   eam      — atmosphere (EAM)
   elm      — land model (ELM)
@@ -31,30 +31,30 @@ Recognised E3SM components (detected from filename tokens):
   mali     — land ice (MALI / MPAS-Albany-LandIce)
   cpl      — coupler
   datm dlnd drof — data components
-  
+
 File types handled (restart files only — history/initial files are ignored):
   CIME-style : case.comp.r.YYYY-MM-DD-SSSSS.nc
                 case.comp.rs.YYYY-MM-DD-SSSSS.nc
                 case.comp.rh0.YYYY-MM-DD-SSSSS.nc  (and rh1, rh2, …)
   MPAS-style : case.comp.rst.YYYY-MM-DD_HH.MM.SS.nc
-  
+
 Explicitly skipped (not restart files):
   case.comp.h0.…nc, case.comp.hi.…nc, case.comp.hist.…nc  (history)
   case.comp.i.…nc  (initial conditions)
-  
+
 Dry-run output:
   Lists files that WOULD be moved to ./restarts/ (with sizes) and
   files that WOULD be retained, plus a total storage estimate.
-  
-Examples: 
+
+Examples:
   $(basename "$0")           # run interactively
   $(basename "$0") --help    # show this message
 EOF
   exit 0
-} 
-  
+}
+
 [[ "${1-}" == "--help" || "${1-}" == "-h" ]] && usage
-    
+
 # ----------------------------------------------------------------
 # Helper: format bytes into human-readable string
 # ----------------------------------------------------------------
