@@ -125,5 +125,20 @@ MAP_VRANGE_OVERRIDES = {
 # Valid names: iceAreaCell, iceRunoffFlux, riverRunoffFlux, QSNWCPICE, SNO_T_davg
 # ---------------------------------------------------------------------------
 
-#MAP_VARIABLES_TO_PLOT = None   # None → plot all
-MAP_VARIABLES_TO_PLOT = [ 'iceRunoffFlux' ]
+MAP_VARIABLES_TO_PLOT = None   # None → plot all
+#MAP_VARIABLES_TO_PLOT = [ 'iceAreaCell' ]
+
+# ---------------------------------------------------------------------------
+# Sea-ice concentration masking threshold for map plots
+#
+# Values of iceAreaCell at or below this threshold are masked out (rendered as
+# transparent background) so the colorbar only colours cells with meaningful
+# sea-ice concentration.  This makes it much easier to distinguish very low
+# concentrations from truly ice-free ocean.
+#
+# Set to 0.0 (default) to mask only identically-zero cells.
+# Set to a small positive value (e.g. 1e-6) to also exclude near-zero noise.
+# Set to None to disable masking entirely (original behaviour).
+# ---------------------------------------------------------------------------
+
+ICE_MASK_THRESHOLD = 0.0

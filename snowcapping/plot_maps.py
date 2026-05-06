@@ -93,7 +93,8 @@ MAP_VARIABLES = [
         name         = 'iceAreaCell',
         long_name    = 'Monthly Sea-Ice Area Fraction',
         units        = 'fraction',
-        cmap         = 'Blues',
+        #cmap         = 'Blues',
+        cmap         = 'cool_r',
         source       = 'mpassi',
         file_pattern = '*.mpassi.hist.am.timeSeriesStatsMonthly.*.nc',
         var_cands    = ['timeMonthly_avg_iceAreaCell',
@@ -101,6 +102,7 @@ MAP_VARIABLES = [
         depth_dim    = None,
         vmin         = 0.0,
         vmax         = 1.0,
+        mask_threshold = 'ICE_MASK_THRESHOLD',  # read from config at runtime
     ),
     dict(
         name         = 'iceRunoffFlux',
@@ -530,10 +532,18 @@ def _compute_vrange(all_data_arrays, fixed_vmin=None, fixed_vmax=None):
 # ---------------------------------------------------------------------------
 
 def _render_panel(ax, lat_d, lon_d, data_d, source_type, tri_cache,
-                  cache_key, var_name, proj, cmap, vmin, vmax):
+                  cache_key, var_name, proj, cmap, vmin, vmax,
+                  mask_threshold=None):
     """
     Render data onto a single map axes panel.  Returns the mappable or None.
+
+    mask_threshold : if not None, values <= this threshold are set to NaN so
+                     they appear as the map background rather than being coloured.
     """
+    # Apply mask: values at or below threshold become NaN (transparent)
+    if mask_threshold is not None:
+        data_d = data_d.copy()
+        data_d[data_d <= mask_threshold] = np.nan
     if source_type == 'unstructured':
         # --- MPAS: tripcolor with masked triangulation ---
         tri_key = (cache_key, var_name, id(lat_d))
@@ -546,10 +556,20 @@ def _render_panel(ax, lat_d, lon_d, data_d, source_type, tri_cache,
         plot_data[nan_mask] = 0.0
 
         tri_verts = tri.triangles
-        all_nan = (nan_mask[tri_verts[:, 0]]
-                   & nan_mask[tri_verts[:, 1]]
-                   & nan_mask[tri_verts[:, 2]])
-        combined_mask = tri.mask | all_nan if tri.mask is not None else all_nan
+        # When mask_threshold is active, hide any triangle touching a masked
+        # cell (any vertex NaN) to avoid diluted edge colours.  Otherwise
+        # use the original all-NaN criterion (only hides fully-missing data).
+        if mask_threshold is not None:
+            any_nan = (nan_mask[tri_verts[:, 0]]
+                       | nan_mask[tri_verts[:, 1]]
+                       | nan_mask[tri_verts[:, 2]])
+            tri_nan_mask = any_nan
+        else:
+            all_nan = (nan_mask[tri_verts[:, 0]]
+                       & nan_mask[tri_verts[:, 1]]
+                       & nan_mask[tri_verts[:, 2]])
+            tri_nan_mask = all_nan
+        combined_mask = tri.mask | tri_nan_mask if tri.mask is not None else tri_nan_mask
 
         tri_local = mtri.Triangulation(tri.x, tri.y, tri.triangles)
         tri_local.set_mask(combined_mask)
@@ -589,7 +609,8 @@ def plot_variable(var_name, long_name, units, cmap,
                   lat_min, lat_max, lon_min, lon_max,
                   output_dir, tri_cache,
                   fixed_vmin=None, fixed_vmax=None,
-                  show_diff=False, diff_cmap='RdBu_r'):
+                  show_diff=False, diff_cmap='RdBu_r',
+                  mask_threshold=None):
     """
     Generate one PNG per month for the given variable.
 
@@ -704,7 +725,8 @@ def plot_variable(var_name, long_name, units, cmap,
                 lat_d, lon_d, data_d = sim_data[month]
                 im = _render_panel(ax, lat_d, lon_d, data_d, source_type,
                                    tri_cache, cache_key, var_name, proj,
-                                   cmap, vmin, vmax)
+                                   cmap, vmin, vmax,
+                                   mask_threshold=mask_threshold)
                 if im is not None and mappable is None:
                     mappable = im
 
@@ -886,6 +908,12 @@ def main():
             fv_min = var_def.get('vmin')
             fv_max = var_def.get('vmax')
 
+        # Resolve mask_threshold: var_def may name a config attribute (string)
+        # or provide a numeric value directly.
+        mt = var_def.get('mask_threshold')
+        if isinstance(mt, str):
+            mt = getattr(config, mt, None)
+
         plot_variable(
             var_name    = vname,
             long_name   = var_def['long_name'],
@@ -901,6 +929,7 @@ def main():
             fixed_vmin  = fv_min,
             fixed_vmax  = fv_max,
             show_diff   = (vname == 'SNO_T_davg'),
+            mask_threshold = mt,
         )
 
     print("\nDone.\n")
