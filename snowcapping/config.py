@@ -56,8 +56,8 @@ CTRL_LABEL = "Control (no fix)"
 # The same band is applied to BOTH simulations so the comparison is fair.
 # ---------------------------------------------------------------------------
 
-LATBAND_DEGREES = None  # e.g. 65.0 or None
-#LATBAND_DEGREES = 35.0  # e.g. 65.0 or None
+#LATBAND_DEGREES = None  # e.g. 65.0 or None
+LATBAND_DEGREES = 65.0  # e.g. 65.0 or None
 
 # ---------------------------------------------------------------------------
 # Map plot spatial extent (degrees)
@@ -71,22 +71,60 @@ LATBAND_DEGREES = None  # e.g. 65.0 or None
 #   MAP_LON_MAX = -60.0
 # ---------------------------------------------------------------------------
 
-MAP_LAT_MIN = None   # southern limit  (degrees_north)
-MAP_LAT_MAX = None   # northern limit  (degrees_north)
-MAP_LON_MIN = None   # western  limit  (degrees_east, range −180 to 180)
-MAP_LON_MAX = None   # eastern  limit  (degrees_east)
+#MAP_LAT_MIN = None   # southern limit  (degrees_north)
+#MAP_LAT_MAX = None   # northern limit  (degrees_north)
+#MAP_LON_MIN = None   # western  limit  (degrees_east, range −180 to 180)
+#MAP_LON_MAX = None   # eastern  limit  (degrees_east)
 
 # test focus area: zoom to high mountain Asia
-#MAP_LAT_MIN = 0.0    # southern limit  (degrees_north)
-#MAP_LAT_MAX = 50.0   # northern limit  (degrees_north)
-#MAP_LON_MIN = 45.0   # western  limit  (degrees_east, range −180 to 180)
-#MAP_LON_MAX = 105.0  # eastern  limit  (degrees_east)
+MAP_LAT_MIN = 0.0    # southern limit  (degrees_north)
+MAP_LAT_MAX = 50.0   # northern limit  (degrees_north)
+MAP_LON_MIN = 45.0   # western  limit  (degrees_east, range −180 to 180)
+MAP_LON_MAX = 105.0  # eastern  limit  (degrees_east)
 
 # test focus area: zoom to tip of S. Greenland 
 #MAP_LAT_MIN = 50.0    # southern limit  (degrees_north)
 #MAP_LAT_MAX = 70.0    # northern limit  (degrees_north)
 #MAP_LON_MIN = -60.0   # western  limit  (degrees_east, range −180 to 180)
 #MAP_LON_MAX = -30.0   # eastern  limit  (degrees_east)
+
+# ---------------------------------------------------------------------------
+# Date range filtering
+#
+# By default (all set to None) every available month/year that is common to
+# both simulations is analysed.  Override any combination below to restrict
+# the analysis window.
+#
+# YEAR_START / YEAR_END : inclusive year bounds  (integers, e.g. 2003)
+# MONTH_START / MONTH_END : inclusive month-of-year bounds (1–12, e.g. 3 for
+#                           March).  When set together with YEAR_*, only data
+#                           within the resulting date window is used.
+#
+# Examples
+# --------
+# Analyse only March–August of 2003:
+#   YEAR_START  = 2003
+#   YEAR_END    = 2003
+#   MONTH_START = 3
+#   MONTH_END   = 8
+#
+# Analyse all months from 2001 through 2003:
+#   YEAR_START  = 2001
+#   YEAR_END    = 2003
+#   MONTH_START = None
+#   MONTH_END   = None
+#
+# Analyse only June–August across all available years:
+#   YEAR_START  = None
+#   YEAR_END    = None
+#   MONTH_START = 6
+#   MONTH_END   = 8
+# ---------------------------------------------------------------------------
+
+YEAR_START  = 2011   # e.g. 2003
+YEAR_END    = 2011   # e.g. 2003
+MONTH_START = 1      # e.g. 3  (March)
+MONTH_END   = 12     # e.g. 8  (August)
 
 # ---------------------------------------------------------------------------
 # Output
@@ -133,8 +171,9 @@ MAP_VRANGE_OVERRIDES = {
 # Valid names: iceAreaCell, iceRunoffFlux, riverRunoffFlux, QSNWCPICE, SNO_T_davg
 # ---------------------------------------------------------------------------
 
-MAP_VARIABLES_TO_PLOT = None   # None → plot all
+#MAP_VARIABLES_TO_PLOT = None   # None → plot all
 #MAP_VARIABLES_TO_PLOT = [ 'iceAreaCell' ]
+MAP_VARIABLES_TO_PLOT = [ 'QSNWCPICE' ]
 
 # ---------------------------------------------------------------------------
 # Sea-ice concentration masking threshold for map plots

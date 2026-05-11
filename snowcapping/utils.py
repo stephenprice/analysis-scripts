@@ -5,6 +5,7 @@ Provides:
   - Fortran namelist parsing
   - Simulation metadata extraction (latband, dtime, start date)
   - File discovery helpers
+  - Date-range filtering helpers
   - lnd.log diagnostic parsing
   - ELM history file sorting (handles YYYY-Mon.nc and YYYY-MM-DD-HHHHH.nc)
   - Coordinate normalization helpers
@@ -177,6 +178,123 @@ def find_files(run_dir, pattern, required=True):
     if not files and required:
         print(f"  Warning: no files matching '{full_pattern}'")
     return files
+
+
+# ---------------------------------------------------------------------------
+# Date-range filtering
+# ---------------------------------------------------------------------------
+
+def _year_month_in_range(year, month, year_start, year_end,
+                         month_start, month_end):
+    """
+    Return True if (year, month) falls within the specified range.
+
+    All four bounds are optional (None = unbounded).  When both year and month
+    bounds are given, the check is a simple calendar window:
+        year_start/month_start  ≤  year/month  ≤  year_end/month_end
+    When only month bounds are given (year bounds are None), only the month-of-
+    year is checked (i.e. every year that has that month is included).
+    """
+    if year_start is not None and (year < year_start or
+                                   (year == year_start and month_start is not None
+                                    and month < month_start)):
+        return False
+    if year_end is not None and (year > year_end or
+                                 (year == year_end and month_end is not None
+                                  and month > month_end)):
+        return False
+    if year_start is None and month_start is not None and month < month_start:
+        return False
+    if year_end is None and month_end is not None and month > month_end:
+        return False
+    return True
+
+
+def filter_by_month_dict(data_dict, year_start=None, year_end=None,
+                         month_start=None, month_end=None):
+    """
+    Filter a dict keyed by (year, month) tuples to the requested date range.
+
+    If all bounds are None, the dict is returned unchanged (all months kept).
+    """
+    if year_start is None and year_end is None \
+       and month_start is None and month_end is None:
+        return data_dict
+    filtered = {k: v for k, v in data_dict.items()
+                if _year_month_in_range(k[0], k[1], year_start, year_end,
+                                        month_start, month_end)}
+    n_dropped = len(data_dict) - len(filtered)
+    if n_dropped:
+        print(f"  Date filter: kept {len(filtered)}/{len(data_dict)} months")
+    return filtered
+
+
+def filter_by_date_range(df, year_start=None, year_end=None,
+                         month_start=None, month_end=None):
+    """
+    Filter a DataFrame with a DatetimeIndex to the requested date range.
+
+    Returns the (possibly unchanged) DataFrame.  If the index is not a
+    DatetimeIndex or all bounds are None, the DataFrame is returned as-is.
+
+    Filtering is based on the year and month of each timestamp (not on
+    sub-day precision), which avoids edge cases with end-of-period
+    timestamps that land at midnight of the following month/year.
+    """
+    if df is None or df.empty:
+        return df
+    if not isinstance(df.index, pd.DatetimeIndex):
+        return df
+    if year_start is None and year_end is None \
+       and month_start is None and month_end is None:
+        return df
+
+    years  = np.asarray(df.index.year)
+    months = np.asarray(df.index.month)
+    mask   = np.ones(len(df), dtype=bool)
+
+    # --- Start bound ---
+    if year_start is not None and month_start is not None:
+        mask &= (years > year_start) | \
+                ((years == year_start) & (months >= month_start))
+    elif year_start is not None:
+        mask &= years >= year_start
+    elif month_start is not None:
+        mask &= months >= month_start
+
+    # --- End bound ---
+    if year_end is not None and month_end is not None:
+        mask &= (years < year_end) | \
+                ((years == year_end) & (months <= month_end))
+    elif year_end is not None:
+        mask &= years <= year_end
+    elif month_end is not None:
+        mask &= months <= month_end
+
+    filtered = df.iloc[mask]
+    n_dropped = len(df) - len(filtered)
+    if n_dropped:
+        print(f"  Date filter: kept {len(filtered)}/{len(df)} records")
+    return filtered
+
+
+def filter_mpas_month_dict(data_dict, year_start=None, year_end=None,
+                           month_start=None, month_end=None):
+    """
+    Filter a dict keyed by month_int (1-12) using only month bounds.
+
+    MPAS monthly dicts are keyed by month alone (no year).  Year filtering
+    cannot be applied here; only month_start / month_end are used.
+    """
+    if month_start is None and month_end is None:
+        return data_dict
+    filtered = {m: v for m, v in data_dict.items()
+                if (month_start is None or m >= month_start)
+                and (month_end is None or m <= month_end)}
+    n_dropped = len(data_dict) - len(filtered)
+    if n_dropped:
+        print(f"  Date filter (month-only): kept {len(filtered)}/{len(data_dict)} months")
+    return filtered
 
 
 # ---------------------------------------------------------------------------

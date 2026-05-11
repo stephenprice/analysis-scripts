@@ -266,6 +266,9 @@ def make_plot(fix_df, ctrl_df, latband_deg, output_dir):
         axes[-1].xaxis.set_major_locator(mdates.MonthLocator())
         axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
         plt.setp(axes[-1].get_xticklabels(), rotation=30, ha='right')
+        # Clamp x-axis to the actual data range so matplotlib does not
+        # auto-extend into the next month and show a spurious tick label.
+        axes[-1].set_xlim(ref_idx.min(), ref_idx.max())
 
     axes[-1].set_xlabel('Date')
     fig.suptitle('Sea-Ice Metrics Comparison within Latitude Band',
@@ -314,6 +317,12 @@ def main():
     print(f"\nLoading ctrl run data: {config.CTRL_RUN_DIR}")
     ctrl_df = (load_mpassi_daily(config.CTRL_RUN_DIR, latband, ctrl_lat, ctrl_area)
                if ctrl_lat is not None else None)
+
+    # Apply date-range filter from config
+    fix_df  = utils.filter_by_date_range(fix_df,  config.YEAR_START, config.YEAR_END,
+                                         config.MONTH_START, config.MONTH_END)
+    ctrl_df = utils.filter_by_date_range(ctrl_df, config.YEAR_START, config.YEAR_END,
+                                         config.MONTH_START, config.MONTH_END)
 
     print("\nGenerating plot…")
     make_plot(fix_df, ctrl_df, latband, config.OUTPUT_DIR)

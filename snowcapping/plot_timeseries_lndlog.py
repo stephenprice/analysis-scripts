@@ -169,6 +169,13 @@ def plot_lndlog(step_fix, step_ctrl, cum_fix, cum_ctrl, output_dir):
             axes[-1].xaxis.set_major_locator(mdates.MonthLocator())
             axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
             plt.setp(axes[-1].get_xticklabels(), rotation=30, ha='right')
+            # Clamp x-axis to the actual data range so matplotlib does not
+            # auto-extend into the next month and show a spurious tick label.
+            all_idx = []
+            if _has_datetime_index(fix_df):  all_idx.append(fix_df.index)
+            if _has_datetime_index(ctrl_df): all_idx.append(ctrl_df.index)
+            combined = all_idx[0].union(all_idx[1]) if len(all_idx) == 2 else all_idx[0]
+            axes[-1].set_xlim(combined.min(), combined.max())
 
         axes[-1].set_xlabel('Model Date')
         fig.suptitle(_TITLES[kind], fontsize=12, y=1.01)
@@ -203,6 +210,16 @@ def main():
     print(f"\nParsing ctrl run logs: {config.CTRL_RUN_DIR}")
     step_ctrl, cum_ctrl = utils.parse_lnd_logs(
         config.CTRL_RUN_DIR, start_date, dtime)
+
+    # Apply date-range filter from config
+    step_fix  = utils.filter_by_date_range(step_fix,  config.YEAR_START, config.YEAR_END,
+                                           config.MONTH_START, config.MONTH_END)
+    cum_fix   = utils.filter_by_date_range(cum_fix,   config.YEAR_START, config.YEAR_END,
+                                           config.MONTH_START, config.MONTH_END)
+    step_ctrl = utils.filter_by_date_range(step_ctrl, config.YEAR_START, config.YEAR_END,
+                                           config.MONTH_START, config.MONTH_END)
+    cum_ctrl  = utils.filter_by_date_range(cum_ctrl,  config.YEAR_START, config.YEAR_END,
+                                           config.MONTH_START, config.MONTH_END)
 
     # If the control run produced no diagnostics (expected), substitute a
     # zero-valued DataFrame aligned to the fix run's time index so both

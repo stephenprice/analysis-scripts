@@ -896,6 +896,16 @@ def main():
         print(f"  Loading ctrl run…")
         ctrl_data, _ = load_variable(config.CTRL_RUN_DIR, var_def, mesh_cache)
 
+        # Apply date-range filter from config.
+        # Both MPAS and ELM loaders in plot_maps return dicts keyed by
+        # month_int (1–12), so only month bounds can be applied here.
+        fix_data = utils.filter_mpas_month_dict(
+            fix_data, month_start=config.MONTH_START,
+            month_end=config.MONTH_END)
+        ctrl_data = utils.filter_mpas_month_dict(
+            ctrl_data, month_start=config.MONTH_START,
+            month_end=config.MONTH_END)
+
         if not fix_data and not ctrl_data:
             print(f"  No data found for {vname}; skipping.")
             continue
