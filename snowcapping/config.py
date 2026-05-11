@@ -29,24 +29,20 @@ Notes
 # ---------------------------------------------------------------------------
 
 FIX_RUN_DIR = (
-    "/lcrc/group/e3sm/ac.sprice/scratch/bebop/"
-    "20260423.WCYCL20TR.ne30pg2_r05_IcoswISC30E3r5.bebop.snowcappingFix.0101.65deg/run"
+    "/pscratch/sd/s/sprice/e3sm_scratch/pm-cpu/"
+    "20260427.BGWCYCL2010.ne30pg2_r05_IcoswISC30E3r5_gis4to40.pm-cpu.snowcappingFix/run/"
 )
-#FIX_RUN_DIR = (
-#    "/lcrc/group/e3sm/ac.sprice/scratch/bebop/"
-#    "20260416.WCYCL20TR.ne30pg2_r05_IcoswISC30E3r5.bebop.snowcappingFix.0101/run"
-#)
 
 CTRL_RUN_DIR = (
-    "/lcrc/group/e3sm/ac.sprice/scratch/bebop/"
-    "20260416.WCYCL20TR.ne30pg2_r05_IcoswISC30E3r5.bebop.snowcappingFixBaseline.0101/run"
+    "/pscratch/sd/s/sprice/e3sm_scratch/pm-cpu/"
+    "20260427.BGWCYCL2010.ne30pg2_r05_IcoswISC30E3r5_gis4to40.pm-cpu.snowcappingFixBaseline/run/"
 )
 
 # ---------------------------------------------------------------------------
 # Labels used in plot legends and titles
 # ---------------------------------------------------------------------------
 
-FIX_LABEL  = "SnowcappingFix (±45°)"
+FIX_LABEL  = "SnowcappingFix (±65°)"
 CTRL_LABEL = "Control (no fix)"
 
 # ---------------------------------------------------------------------------
@@ -79,6 +75,18 @@ MAP_LAT_MIN = None   # southern limit  (degrees_north)
 MAP_LAT_MAX = None   # northern limit  (degrees_north)
 MAP_LON_MIN = None   # western  limit  (degrees_east, range −180 to 180)
 MAP_LON_MAX = None   # eastern  limit  (degrees_east)
+
+# test focus area: zoom to high mountain Asia
+#MAP_LAT_MIN = 0.0    # southern limit  (degrees_north)
+#MAP_LAT_MAX = 50.0   # northern limit  (degrees_north)
+#MAP_LON_MIN = 45.0   # western  limit  (degrees_east, range −180 to 180)
+#MAP_LON_MAX = 105.0  # eastern  limit  (degrees_east)
+
+# test focus area: zoom to tip of S. Greenland 
+#MAP_LAT_MIN = 50.0    # southern limit  (degrees_north)
+#MAP_LAT_MAX = 70.0    # northern limit  (degrees_north)
+#MAP_LON_MIN = -60.0   # western  limit  (degrees_east, range −180 to 180)
+#MAP_LON_MAX = -30.0   # eastern  limit  (degrees_east)
 
 # ---------------------------------------------------------------------------
 # Output
