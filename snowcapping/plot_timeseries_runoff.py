@@ -46,8 +46,8 @@ TEST_RUN_DIR = (
     '20260305.BGWCYCL2010.ne30pg2_r05_IcoswISC30E3r5_gis4to40.pm-cpu.testConfigNewSMBandIC/run/'
 )
 
-CTRL_LABEL = 'Baseline (no GrIS coupling)'
-TEST_LABEL = 'New (GrIS SMB coupling)'
+CTRL_LABEL = 'Baseline'
+TEST_LABEL = 'with GIS coupling)'
 
 # Greenland bounding box
 LAT_MIN = 55.0   # degrees N
@@ -64,11 +64,15 @@ MESH_FALLBACK = (
 OUTPUT_DIR = './plots'
 
 # Year range to process (None = no limit)
-YEAR_START = None
-YEAR_END = None
+YEAR_START = 2011
+YEAR_END = 2100
 
 # Conversion factor: kg/s -> Gt/yr
 KG_PER_S_TO_GT_PER_YR = 365.25 * 86400.0 / 1e12
+
+# Y-axis limits for each panel: (ymin, ymax).  Use None for auto.
+YLIM_RIVER = (0, None)   # riverRunoffFlux panel
+YLIM_ICE   = (0, None)   # iceRunoffFlux panel
 
 # Plot styling
 COLORS = {'ctrl': 'C0', 'test': 'C1'}
@@ -255,11 +259,11 @@ def make_plot(ctrl_df, test_df, output_dir):
     fig, axes = plt.subplots(2, 1, figsize=(13, 7), sharex=True)
 
     panels = [
-        ('riverRunoffFlux_Gt_yr', 'River Runoff Flux (Greenland region)'),
-        ('iceRunoffFlux_Gt_yr', 'Ice Runoff Flux (Greenland region)'),
+        ('riverRunoffFlux_Gt_yr', 'River Runoff Flux (Greenland region)', YLIM_RIVER),
+        ('iceRunoffFlux_Gt_yr', 'Ice Runoff Flux (Greenland region)', YLIM_ICE),
     ]
 
-    for ax, (col, title) in zip(axes, panels):
+    for ax, (col, title, ylim) in zip(axes, panels):
         if ctrl_df is not None and col in ctrl_df.columns:
             ax.plot(ctrl_df.index, ctrl_df[col],
                     color=COLORS['ctrl'], lw=LINEWIDTHS['ctrl'],
@@ -272,6 +276,11 @@ def make_plot(ctrl_df, test_df, output_dir):
         ax.set_ylabel('Flux (Gt/yr)')
         ax.legend(loc='best', fontsize=9)
         ax.grid(True, alpha=0.3)
+        # Apply y-axis limits
+        if ylim[0] is not None:
+            ax.set_ylim(bottom=ylim[0])
+        if ylim[1] is not None:
+            ax.set_ylim(top=ylim[1])
 
     # Format x-axis
     axes[-1].set_xlabel('Year')
