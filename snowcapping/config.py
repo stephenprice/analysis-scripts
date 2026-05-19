@@ -71,10 +71,10 @@ LATBAND_DEGREES = 65.0  # e.g. 65.0 or None
 #   MAP_LON_MAX = -60.0
 # ---------------------------------------------------------------------------
 
-#MAP_LAT_MIN = None   # southern limit  (degrees_north)
-#MAP_LAT_MAX = None   # northern limit  (degrees_north)
-#MAP_LON_MIN = None   # western  limit  (degrees_east, range −180 to 180)
-#MAP_LON_MAX = None   # eastern  limit  (degrees_east)
+MAP_LAT_MIN = None   # southern limit  (degrees_north)
+MAP_LAT_MAX = None   # northern limit  (degrees_north)
+MAP_LON_MIN = None   # western  limit  (degrees_east, range −180 to 180)
+MAP_LON_MAX = None   # eastern  limit  (degrees_east)
 
 # test focus area: zoom to high mountain Asia
 #MAP_LAT_MIN = 0.0    # southern limit  (degrees_north)
@@ -83,10 +83,10 @@ LATBAND_DEGREES = 65.0  # e.g. 65.0 or None
 #MAP_LON_MAX = 105.0  # eastern  limit  (degrees_east)
 
 # test focus area: zoom to tip of S. Greenland 
-MAP_LAT_MIN = 50.0    # southern limit  (degrees_north)
-MAP_LAT_MAX = 70.0    # northern limit  (degrees_north)
-MAP_LON_MIN = -60.0   # western  limit  (degrees_east, range −180 to 180)
-MAP_LON_MAX = -30.0   # eastern  limit  (degrees_east)
+#MAP_LAT_MIN = 50.0    # southern limit  (degrees_north)
+#MAP_LAT_MAX = 70.0    # northern limit  (degrees_north)
+#MAP_LON_MIN = -60.0   # western  limit  (degrees_east, range −180 to 180)
+#MAP_LON_MAX = -30.0   # eastern  limit  (degrees_east)
 
 # ---------------------------------------------------------------------------
 # Date range filtering
