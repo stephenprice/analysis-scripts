@@ -47,7 +47,7 @@ TEST_RUN_DIR = (
 )
 
 CTRL_LABEL = 'Baseline'
-TEST_LABEL = 'with GIS coupling)'
+TEST_LABEL = 'with GIS coupling'
 
 # Greenland bounding box
 LAT_MIN = 55.0   # degrees N
@@ -64,8 +64,8 @@ MESH_FALLBACK = (
 OUTPUT_DIR = './plots'
 
 # Year range to process (None = no limit)
-YEAR_START = 2011
-YEAR_END = 2100
+YEAR_START = 2020
+YEAR_END = 2030
 
 # Conversion factor: kg/s -> Gt/yr
 KG_PER_S_TO_GT_PER_YR = 365.25 * 86400.0 / 1e12
