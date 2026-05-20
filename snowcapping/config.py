@@ -29,13 +29,15 @@ Notes
 # ---------------------------------------------------------------------------
 
 FIX_RUN_DIR = (
-    "/pscratch/sd/s/sprice/e3sm_scratch/pm-cpu/"
-    "20260427.BGWCYCL2010.ne30pg2_r05_IcoswISC30E3r5_gis4to40.pm-cpu.snowcappingFix/run/"
+#    "/pscratch/sd/s/sprice/e3sm_scratch/pm-cpu/"
+#    "20260427.BGWCYCL2010.ne30pg2_r05_IcoswISC30E3r5_gis4to40.pm-cpu.snowcappingFix/run/"
+    "/lcrc/group/e3sm/ac.sprice/scratch/bebop/20260513.WCYCL20TR.ne30pg2_r05_IcoswISC30E3r5.bebop.snowcappingFix.0101.65deg/run"
 )
 
 CTRL_RUN_DIR = (
-    "/pscratch/sd/s/sprice/e3sm_scratch/pm-cpu/"
-    "20260427.BGWCYCL2010.ne30pg2_r05_IcoswISC30E3r5_gis4to40.pm-cpu.snowcappingFixBaseline/run/"
+#    "/pscratch/sd/s/sprice/e3sm_scratch/pm-cpu/"
+#    "20260427.BGWCYCL2010.ne30pg2_r05_IcoswISC30E3r5_gis4to40.pm-cpu.snowcappingFixBaseline/run/"
+    "/lcrc/group/e3sm/ac.sprice/scratch/bebop/20260513.WCYCL20TR.ne30pg2_r05_IcoswISC30E3r5.bebop.snowcappingFixBaseline.0101/run"
 )
 
 # ---------------------------------------------------------------------------
@@ -71,6 +73,7 @@ LATBAND_DEGREES = 65.0  # e.g. 65.0 or None
 #   MAP_LON_MAX = -60.0
 # ---------------------------------------------------------------------------
 
+# global 
 MAP_LAT_MIN = None   # southern limit  (degrees_north)
 MAP_LAT_MAX = None   # northern limit  (degrees_north)
 MAP_LON_MIN = None   # western  limit  (degrees_east, range −180 to 180)
@@ -87,6 +90,12 @@ MAP_LON_MAX = None   # eastern  limit  (degrees_east)
 #MAP_LAT_MAX = 70.0    # northern limit  (degrees_north)
 #MAP_LON_MIN = -60.0   # western  limit  (degrees_east, range −180 to 180)
 #MAP_LON_MAX = -30.0   # eastern  limit  (degrees_east)
+
+# test focus area: zoom to Alaska 
+#MAP_LAT_MIN = 50.0    # southern limit  (degrees_north)
+#MAP_LAT_MAX = 70.0    # northern limit  (degrees_north)
+#MAP_LON_MIN = -180.0   # western  limit  (degrees_east, range −180 to 180)
+#MAP_LON_MAX = -120.0   # eastern  limit  (degrees_east)
 
 # ---------------------------------------------------------------------------
 # Date range filtering
@@ -121,8 +130,8 @@ MAP_LON_MAX = None   # eastern  limit  (degrees_east)
 #   MONTH_END   = 8
 # ---------------------------------------------------------------------------
 
-YEAR_START  = 2011   # e.g. 2003
-YEAR_END    = 2011   # e.g. 2003
+YEAR_START  = 1900   # e.g. 2003
+YEAR_END    = 1900   # e.g. 2003
 MONTH_START = 1      # e.g. 3  (March)
 MONTH_END   = 12     # e.g. 8  (August)
 
@@ -140,7 +149,7 @@ COLORS     = {"fix": "steelblue",  "ctrl": "firebrick"}
 LINESTYLES = {"fix": "-",          "ctrl": "--"}
 LINEWIDTHS = {"fix": 1.5,          "ctrl": 1.5}
 
-DPI = 150   # figure resolution for saved PNGs
+DPI = 300   # figure resolution for saved PNGs
 
 # ---------------------------------------------------------------------------
 # Per-variable colorbar overrides for map plots
@@ -172,7 +181,7 @@ MAP_VRANGE_OVERRIDES = {
 # ---------------------------------------------------------------------------
 
 MAP_VARIABLES_TO_PLOT = None   # None → plot all
-#MAP_VARIABLES_TO_PLOT = [ 'iceAreaCell' ]
+#MAP_VARIABLES_TO_PLOT = [ 'QSNWCPICE', 'SNO_T_davg' ]
 #MAP_VARIABLES_TO_PLOT = [ 'QSNWCPICE' ]
 
 # ---------------------------------------------------------------------------
