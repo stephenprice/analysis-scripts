@@ -37,13 +37,19 @@ import utils
 # Configuration
 # ---------------------------------------------------------------------------
 
+#CTRL_RUN_DIR = (
+#    '/lcrc/group/e3sm/ac.sprice/scratch/bebop/'
+#    '20260513.WCYCL20TR.ne30pg2_r05_IcoswISC30E3r5.bebop.snowcappingFixBaseline.0101/run'
+#)
+#TEST_RUN_DIR = (
+#    '/lcrc/group/e3sm/ac.sprice/scratch/bebop/'
+#    '20260513.WCYCL20TR.ne30pg2_r05_IcoswISC30E3r5.bebop.snowcappingFix.0101.65deg/run'
+#)
 CTRL_RUN_DIR = (
-    '/pscratch/sd/s/sprice/e3sm_scratch/pm-cpu/'
-    '20260320.WCYCL2010NS.ne30pg2_r05_IcoswISC30E3r5.pm-cpu.baseline/run/'
+    '/lcrc/group/e3sm2/ac.wlin/E3SMv3/v3.LR.historical_0101/archive/ocn/hist/'
 )
 TEST_RUN_DIR = (
-    '/pscratch/sd/s/sprice/e3sm_scratch/pm-cpu/'
-    '20260305.BGWCYCL2010.ne30pg2_r05_IcoswISC30E3r5_gis4to40.pm-cpu.testConfigNewSMBandIC/run/'
+    '/lcrc/group/e3sm2/ac.wlin/E3SMv3/v3.LR.historical_0101/archive/ocn/hist/'
 )
 
 CTRL_LABEL = 'Baseline'
@@ -56,8 +62,14 @@ LON_MIN = -75.0  # degrees (W is negative)
 LON_MAX = -15.0  # degrees
 
 # Fallback mesh/init file (if no mpaso.rst found in run dirs)
+# NERSC/Perlmutter:
+# MESH_FALLBACK = (
+#     '/global/cfs/cdirs/e3sm/inputdata/ocn/mpas-o/IcoswISC30E3r5/'
+#     'mpaso.IcoswISC30E3r5.20231120.nc'
+# )
+# bebop/chrysalis (LCRC):
 MESH_FALLBACK = (
-    '/global/cfs/cdirs/e3sm/inputdata/ocn/mpas-o/IcoswISC30E3r5/'
+    '/lcrc/group/e3sm/data/inputdata/ocn/mpas-o/IcoswISC30E3r5/'
     'mpaso.IcoswISC30E3r5.20231120.nc'
 )
 
@@ -67,10 +79,10 @@ OUTPUT_DIR = './plots'
 # Each simulation can have its own time slice, e.g. compare 2010-2019 from
 # the control with 2030-2039 from the test.  When the two time spans differ,
 # the plot x-axis shows "months since start" so the curves overlay.
-CTRL_YEAR_START = 2060
-CTRL_YEAR_END   = 2070
-TEST_YEAR_START = 2060
-TEST_YEAR_END   = 2070
+CTRL_YEAR_START = 1900
+CTRL_YEAR_END   = 1910
+TEST_YEAR_START = 2040
+TEST_YEAR_END   = 2050
 
 # Conversion factor: kg/s -> Gt/yr
 KG_PER_S_TO_GT_PER_YR = 365.25 * 86400.0 / 1e12
