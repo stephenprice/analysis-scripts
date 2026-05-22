@@ -63,9 +63,14 @@ MESH_FALLBACK = (
 
 OUTPUT_DIR = './plots'
 
-# Year range to process (None = no limit)
-YEAR_START = 2020
-YEAR_END = 2030
+# Year range to process for each simulation (None = no limit).
+# Each simulation can have its own time slice, e.g. compare 2010-2019 from
+# the control with 2030-2039 from the test.  When the two time spans differ,
+# the plot x-axis shows "months since start" so the curves overlay.
+CTRL_YEAR_START = 2060
+CTRL_YEAR_END   = 2070
+TEST_YEAR_START = 2060
+TEST_YEAR_END   = 2070
 
 # Conversion factor: kg/s -> Gt/yr
 KG_PER_S_TO_GT_PER_YR = 365.25 * 86400.0 / 1e12
@@ -132,7 +137,8 @@ def load_mesh(run_dir):
 # Data loading
 # ---------------------------------------------------------------------------
 
-def load_runoff_timeseries(run_dir, lat, lon, area, mask):
+def load_runoff_timeseries(run_dir, lat, lon, area, mask,
+                          year_start=None, year_end=None):
     """
     Load MPAS-O timeSeriesStatsMonthly files and compute area-integrated
     iceRunoffFlux and riverRunoffFlux over the masked region.
@@ -145,6 +151,10 @@ def load_runoff_timeseries(run_dir, lat, lon, area, mask):
         Mesh coordinates and cell areas (from load_mesh).
     mask : 1-D bool array
         True for cells within the Greenland bounding box.
+    year_start : int or None
+        First year to include (None = no lower limit).
+    year_end : int or None
+        Last year to include (None = no upper limit).
 
     Returns
     -------
@@ -158,7 +168,7 @@ def load_runoff_timeseries(run_dir, lat, lon, area, mask):
         return None
 
     # Filter files by year range (date is in filename: ...YYYY-MM-DD.nc)
-    if YEAR_START is not None or YEAR_END is not None:
+    if year_start is not None or year_end is not None:
         import re
         _date_re = re.compile(r'\.(\d{4})-\d{2}-\d{2}\.nc$')
         filtered = []
@@ -166,9 +176,9 @@ def load_runoff_timeseries(run_dir, lat, lon, area, mask):
             m = _date_re.search(f)
             if m:
                 yr = int(m.group(1))
-                if YEAR_START is not None and yr < YEAR_START:
+                if year_start is not None and yr < year_start:
                     continue
-                if YEAR_END is not None and yr > YEAR_END:
+                if year_end is not None and yr > year_end:
                     continue
             filtered.append(f)
         files = filtered
@@ -252,9 +262,51 @@ def load_runoff_timeseries(run_dir, lat, lon, area, mask):
 # Plotting
 # ---------------------------------------------------------------------------
 
+def _time_spans_match(ctrl_df, test_df):
+    """Return True if both DataFrames share the same calendar time span."""
+    if ctrl_df is None or test_df is None:
+        return True  # only one series; no alignment issue
+    if not (isinstance(ctrl_df.index, pd.DatetimeIndex) and
+            isinstance(test_df.index, pd.DatetimeIndex)):
+        return False
+    ctrl_span = (ctrl_df.index.min(), ctrl_df.index.max())
+    test_span = (test_df.index.min(), test_df.index.max())
+    return ctrl_span == test_span
+
+
 def make_plot(ctrl_df, test_df, output_dir):
     """Create a 2-panel time series plot and save to output_dir."""
     os.makedirs(output_dir, exist_ok=True)
+
+    # Decide whether to use absolute time or "months since start" x-axis.
+    # If the two simulations cover different calendar periods, align them
+    # by elapsed month index so the curves overlay for direct comparison.
+    use_elapsed = not _time_spans_match(ctrl_df, test_df)
+
+    if use_elapsed:
+        # Create 0-based month index for each DataFrame
+        if ctrl_df is not None:
+            ctrl_x = np.arange(len(ctrl_df))
+        if test_df is not None:
+            test_x = np.arange(len(test_df))
+        xlabel = 'Month (from start of each time slice)'
+    else:
+        if ctrl_df is not None:
+            ctrl_x = ctrl_df.index
+        if test_df is not None:
+            test_x = test_df.index
+        xlabel = 'Year'
+
+    # Build legend labels showing the time span
+    def _label_with_years(base_label, df):
+        if df is not None and isinstance(df.index, pd.DatetimeIndex) and len(df) > 0:
+            y0 = df.index.min().year
+            y1 = df.index.max().year
+            return f"{base_label} ({y0}–{y1})"
+        return base_label
+
+    ctrl_legend = _label_with_years(CTRL_LABEL, ctrl_df)
+    test_legend = _label_with_years(TEST_LABEL, test_df)
 
     fig, axes = plt.subplots(2, 1, figsize=(13, 7), sharex=True)
 
@@ -265,13 +317,13 @@ def make_plot(ctrl_df, test_df, output_dir):
 
     for ax, (col, title, ylim) in zip(axes, panels):
         if ctrl_df is not None and col in ctrl_df.columns:
-            ax.plot(ctrl_df.index, ctrl_df[col],
+            ax.plot(ctrl_x, ctrl_df[col].values,
                     color=COLORS['ctrl'], lw=LINEWIDTHS['ctrl'],
-                    ls=LINESTYLES['ctrl'], label=CTRL_LABEL, zorder=2)
+                    ls=LINESTYLES['ctrl'], label=ctrl_legend, zorder=2)
         if test_df is not None and col in test_df.columns:
-            ax.plot(test_df.index, test_df[col],
+            ax.plot(test_x, test_df[col].values,
                     color=COLORS['test'], lw=LINEWIDTHS['test'],
-                    ls=LINESTYLES['test'], label=TEST_LABEL, zorder=3)
+                    ls=LINESTYLES['test'], label=test_legend, zorder=3)
         ax.set_title(title, fontsize=11)
         ax.set_ylabel('Flux (Gt/yr)')
         ax.legend(loc='best', fontsize=9)
@@ -283,10 +335,11 @@ def make_plot(ctrl_df, test_df, output_dir):
             ax.set_ylim(top=ylim[1])
 
     # Format x-axis
-    axes[-1].set_xlabel('Year')
-    axes[-1].xaxis.set_major_locator(mdates.YearLocator(10))
-    axes[-1].xaxis.set_minor_locator(mdates.YearLocator(5))
-    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+    axes[-1].set_xlabel(xlabel)
+    if not use_elapsed:
+        axes[-1].xaxis.set_major_locator(mdates.YearLocator(10))
+        axes[-1].xaxis.set_minor_locator(mdates.YearLocator(5))
+        axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
 
     fig.suptitle(
         f'MPAS-Ocean Runoff Fluxes — Greenland '
@@ -328,11 +381,15 @@ def main():
 
     # --- Load data from both simulations ---
     print(f"\n[2/3] Loading monthly runoff data...")
-    print(f"  Control: {CTRL_RUN_DIR}")
-    ctrl_df = load_runoff_timeseries(CTRL_RUN_DIR, lat, lon, area, mask)
+    print(f"  Control: {CTRL_RUN_DIR}  (years {CTRL_YEAR_START}–{CTRL_YEAR_END})")
+    ctrl_df = load_runoff_timeseries(CTRL_RUN_DIR, lat, lon, area, mask,
+                                     year_start=CTRL_YEAR_START,
+                                     year_end=CTRL_YEAR_END)
 
-    print(f"  Test: {TEST_RUN_DIR}")
-    test_df = load_runoff_timeseries(TEST_RUN_DIR, lat, lon, area, mask)
+    print(f"  Test: {TEST_RUN_DIR}  (years {TEST_YEAR_START}–{TEST_YEAR_END})")
+    test_df = load_runoff_timeseries(TEST_RUN_DIR, lat, lon, area, mask,
+                                     year_start=TEST_YEAR_START,
+                                     year_end=TEST_YEAR_END)
 
     if ctrl_df is None and test_df is None:
         print("  ERROR: No data loaded from either simulation.")
