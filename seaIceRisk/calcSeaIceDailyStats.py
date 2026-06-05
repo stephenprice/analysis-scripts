@@ -45,11 +45,37 @@ mpassiPrefix = '.mpassi.hist.am.timeSeriesStatsDaily.'
 # writePath = pathBase + 'data/v3.LR.historical_thkConc_ensembleStats'
 writePath = pathBase + 'test-data-out/v3.LR.historical_thkConc_ensembleStats'
 
+# Path to the MPAS mesh file — used only to read latCell for spatial filtering.
+# The mesh is the same horizontal grid shared by all ensemble members.
+mesh_file = pathBase + 'test-data/mpaso-IcoswISC30E3r5-restart.nc'
+
+# Restrict output to cells at or north of this latitude (degrees N).
+# Set to None to include all cells globally.
+lat_min_deg = 60.0
+
+# ---------------------------------------------------------------------------
+# Load MPAS mesh and build northern-hemisphere cell index mask
+# ---------------------------------------------------------------------------
+
+os.chdir(pathBase)
+
+rad2deg = 180.0 / np.pi
+print('Loading MPAS mesh for spatial filtering...')
+with xarray.open_dataset(mesh_file) as ds_mesh:
+    lat_cell_full = ds_mesh.latCell.values * rad2deg  # radians -> degrees
+
+if lat_min_deg is not None:
+    ind_north = np.where(lat_cell_full >= lat_min_deg)[0]
+    print(f'  Total mesh cells        : {len(lat_cell_full):,}')
+    print(f'  Cells >= {lat_min_deg} deg N : {len(ind_north):,}')
+else:
+    ind_north = np.arange(len(lat_cell_full))
+    print(f'  No spatial filter applied; total mesh cells: {len(ind_north):,}')
+
 # ---------------------------------------------------------------------------
 # Main processing loop
 # ---------------------------------------------------------------------------
 
-os.chdir(pathBase)
 print('Output directory:', writePath)
 
 # calc. ensemble stats by looping over years, months, and ensemble members
@@ -72,8 +98,8 @@ for year in years:
             print('reading IN file: ', fileBase + file)
             with xarray.open_dataset(fileBase + file) as dataIn:
 
-                concentration = dataIn.timeDaily_avg_iceAreaCell.values
-                thickness = dataIn.timeDaily_avg_iceVolumeCell.values
+                concentration = dataIn.timeDaily_avg_iceAreaCell.values[:, ind_north]
+                thickness = dataIn.timeDaily_avg_iceVolumeCell.values[:, ind_north]
                 # can also read in other fields here (snow volume, u,v vel
                 # components) if needed ...
 
@@ -101,7 +127,9 @@ for year in years:
         thickness95th   = np.percentile(thicknessArray, 95, axis=0)
 
         # write monthly ensemble stats back out to (monthly) .nc file
-        cells  = np.arange(1, ncells + 1)
+        # Use the original (0-based) cell indices so output can be
+        # cross-referenced against the full MPAS mesh.
+        cells  = ind_north
         coords = {'Time': time_coord, 'nCells': cells}
         dims   = ('Time', 'nCells')
 
