@@ -162,7 +162,7 @@ def compute_trend(doys, years):
 def plot_climate_year_heatmap_with_trend(
     data, season_years, stat_label, field_label,
     cmap_name='RdBu', vmin=-30, vmax=30, cbar_label='',
-    center_doy=185, contour_levels=None,
+    center_doy=185, contour_levels=None, season='full',
     trend_overlay=None, route_label='', save_figs=False,
     output_dir='.', field_slug='field',
 ):
@@ -186,6 +186,8 @@ def plot_climate_year_heatmap_with_trend(
     cbar_label     : str   colorbar axis label
     center_doy     : int   shifted DOY (0=Mar15) to place at the centre of the x-axis
     contour_levels : list of float or None   optional contour lines (e.g. [0] for RIO)
+    season         : str   'full', 'spring', or 'fall'; selects which half of the
+                           season-centered frame to display
     trend_overlay  : dict or None
                      Keys 'spring' and/or 'fall', each a dict with:
                        'yi'        - ndarray of season-row indices with valid crossings
@@ -212,7 +214,20 @@ def plot_climate_year_heatmap_with_trend(
     start_doy = (center_doy - n_days // 2) % n_days
     plot_arr = np.roll(plot_arr, -start_doy, axis=1)
 
-    shifted_starts = [(d - start_doy) % n_days for d in SHIFTED_MONTH_DOY]
+    # Optionally keep only one half of the season-centered frame.
+    # After the roll, column 0 ~ Mar 18, the centre column (~Sep 16) is n_days//2,
+    # and the final column ~ Mar 17.  'spring' = left half, 'fall' = right half.
+    split = n_days // 2
+    if season == 'spring':
+        col0, col1 = 0, split
+    elif season == 'fall':
+        col0, col1 = split, n_days
+    else:  # 'full'
+        col0, col1 = 0, n_days
+    plot_arr = plot_arr[:, col0:col1]
+    n_cols = plot_arr.shape[1]
+
+    shifted_starts = [((d - start_doy) % n_days) - col0 for d in SHIFTED_MONTH_DOY]
     month_order = sorted(range(12), key=lambda m: shifted_starts[m])
 
     if vmax is None:
@@ -221,7 +236,7 @@ def plot_climate_year_heatmap_with_trend(
     fig_height = max(3.5, n_seasons * 0.50 + 2.0)
     fig, ax = plt.subplots(figsize=(16, fig_height))
 
-    extent = [-0.5, n_days - 0.5, -0.5, n_seasons - 0.5]
+    extent = [-0.5, n_cols - 0.5, -0.5, n_seasons - 0.5]
     cmap = plt.get_cmap(cmap_name).copy()
     cmap.set_bad(color='lightgrey')
     masked = np.ma.masked_invalid(plot_arr)
@@ -240,19 +255,24 @@ def plot_climate_year_heatmap_with_trend(
         # each level is drawn with its own contour() call rather than one
         # combined call.
         for _i, _level in enumerate(contour_levels):
-            ax.contour(np.arange(n_days), np.arange(n_seasons), masked,
+            ax.contour(np.arange(n_cols), np.arange(n_seasons), masked,
                        levels=[_level], colors='black',
                        linewidths=0.8, linestyles=('--' if _i == 0 else '-'))
 
-    tick_positions = [shifted_starts[m] for m in month_order]
-    tick_labels = [SHIFTED_MONTH_NAMES[m] for m in month_order]
+    tick_positions = []
+    tick_labels = []
+    for m in month_order:
+        pos = shifted_starts[m]
+        if 0 <= pos < n_cols:
+            tick_positions.append(pos)
+            tick_labels.append(SHIFTED_MONTH_NAMES[m])
     ax.set_xticks(tick_positions)
     ax.set_xticklabels(tick_labels, fontsize=10)
-    ax.set_xlim(-0.5, n_days - 0.5)
+    ax.set_xlim(-0.5, n_cols - 0.5)
 
     for m in range(12):
         pos = shifted_starts[m]
-        if 0 < pos < n_days:
+        if 0 < pos < n_cols:
             ax.axvline(x=pos, color='white', linewidth=0.6, alpha=0.5)
 
     ax.set_yticks(range(n_seasons))
@@ -276,14 +296,14 @@ def plot_climate_year_heatmap_with_trend(
             ov = trend_overlay.get(season_key)
             if ov is None or len(ov.get('yi', [])) == 0:
                 continue
-            sc = ax.scatter(ov['rolled_x'], ov['yi'],
+            sc = ax.scatter(np.asarray(ov['rolled_x']) - col0, ov['yi'],
                             color=style['color'], marker=style['marker'],
                             s=40, zorder=5, edgecolors='black', linewidths=0.5,
                             label=style['label'])
             legend_handles.append(sc)
             if not np.isnan(ov['slope']):
                 pred_doy = ov['slope'] * year_arr + ov['intercept']
-                pred_rolled = np.array([(d - start_doy) % n_days for d in pred_doy])
+                pred_rolled = np.array([(d - start_doy) % n_days for d in pred_doy]) - col0
                 trend_yi = np.arange(n_seasons, dtype=float)
                 ax.plot(pred_rolled, trend_yi,
                        color=style['color'], linewidth=2, linestyle='--', zorder=4)
@@ -298,9 +318,10 @@ def plot_climate_year_heatmap_with_trend(
         stat_slug = (stat_label.lower().replace(' ', '_')
                      .replace('th', '').replace('st', ''))
         overlay_suffix = '_trend' if trend_overlay is not None else ''
+        season_suffix = '' if season == 'full' else f'_{season}'
         fname = _os.path.join(
             output_dir,
-            f'{field_slug}_climate_year_route{route_label}_{stat_slug}{overlay_suffix}.png',
+            f'{field_slug}_climate_year_route{route_label}_{stat_slug}{season_suffix}{overlay_suffix}.png',
         )
         fig.savefig(fname, dpi=150, bbox_inches='tight')
         print(f'  Saved: {fname}')
