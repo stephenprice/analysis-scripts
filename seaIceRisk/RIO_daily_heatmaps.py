@@ -4,9 +4,12 @@ RIO_daily_heatmaps.py
 =====================
 Standalone script version of RIO_daily_heatmaps.ipynb.
 
-Produces heatmap figures (day-of-year × year) of POLARIS sea ice shipping
+Produces heatmap figures (day-of-year x year) of POLARIS sea ice shipping
 risk for one or more vessel classes and Arctic route sections, from daily
 MPAS-SI ensemble-statistics NetCDF files.
+
+Data reading and route-specific extraction are separated so that changing
+route information does not require re-reading all NetCDF files.
 
 Usage
 -----
@@ -33,34 +36,42 @@ from datetime import date
 # =============================================================================
 
 # --- Paths ---
-data_path  = os.path.expanduser('~/projects/CINS/ColdHarbor/test-data/')
-mesh_file  = os.path.join(data_path, 'mpaso-IcoswISC30E3r5-restart.nc')
-route_file = os.path.expanduser(
-    '~/projects/CINS/ColdHarbor/pythonScripts/arctic_route_sections.nc')
-output_dir = os.path.expanduser('~/projects/CINS/ColdHarbor/pythonScripts/')
+data_path  = os.path.expanduser('../test-data/')
+mesh_file  = os.path.expanduser('../test-data/mpaso-IcoswISC30E3r5-restart.nc')
+route_file = os.path.expanduser('../test-data/arctic_route_sections.nc')
+output_dir = os.path.expanduser('../figures')
 
 # --- Vessel types to process ---
 # Available: 'PC1', 'PC2', 'PC3', 'PC4', 'PC5', 'PC6', 'PC7',
 #            'IA', 'IAsuper', 'IB', 'IC', 'NIS'
-vessel_classes = ['PC1', 'PC2', 'PC3', 'PC4', 'PC5', 'PC6', 'PC7',
-                  'IA', 'IAsuper', 'IB', 'IC', 'NIS']
+vessel_classes = ['PC6']
 
-# --- Route sections to concatenate, in order ---
+# --- Route source ---
+# 'netcdf' : load route from arctic_route_sections.nc (uses route_sections below)
+# 'text'   : load route from a plain-text waypoint file (uses route_file_txt below)
+route_source = 'text'
+
+# --- Route sections to concatenate, in order (used when route_source='netcdf') ---
 # Available sections: A through J (as defined in arctic_route_sections.nc)
 route_sections = ['E', 'J', 'C', 'D']
 # route_sections = ['H', 'I', 'B', 'A']
 
+# --- Text-file route (used when route_source='text') ---
+# Format: one waypoint per line ->  lat_deg, lon_deg, cumulative_dist_nm
+# Lines beginning with '#' are treated as comments and ignored.
+route_file_txt = os.path.expanduser('../test-data/text_route3.txt')
+
 # --- Years to include ---
 year_start = 2000
-year_end   = 2019
+year_end   = 2001
 years = [str(y) for y in range(year_start, year_end + 1)]
 
 # --- Plot mode ---
 # 'transit_time' : segment-integrated transit time in days (NaN = impassable)
 # 'RIO'          : route RIO summary value (method set by rio_summary_method)
 # 'passability'  : binary green (passable) / red (impassable)
-plot_mode = 'transit_time'
-# plot_mode = 'RIO'
+#plot_mode = 'transit_time'
+plot_mode = 'RIO'
 # plot_mode = 'passability'
 
 # --- Output ---
@@ -187,37 +198,77 @@ print(f'  Cells >= 60 deg N : {len(lat_mesh):,}')
 
 
 # =============================================================================
-# LOAD ROUTE SECTIONS AND BUILD KDTREE
+# LOAD ROUTE AND BUILD KDTREE
 # =============================================================================
 
-print('Loading route sections...')
-ds_route = xr.open_dataset(route_file)
+if route_source == 'netcdf':
+    # ---- Load route from netCDF sections file ----
+    print('Loading route sections...')
+    ds_route = xr.open_dataset(route_file)
 
-trans_lat_list = []
-trans_lon_list = []
-seg_dist_list  = []   # differential distance per waypoint (NM)
+    trans_lat_list = []
+    trans_lon_list = []
+    seg_dist_list  = []   # differential distance per waypoint (NM)
 
-for sec in route_sections:
-    s   = sec.upper()
-    dis = ds_route[f'dis_{s}'].values   # cumulative distance (NM), starts at 0
-    trans_lat_list.append(ds_route[f'lat_{s}'].values)
-    trans_lon_list.append(ds_route[f'lon_{s}'].values)
-    # np.diff gives the inter-waypoint spacing; prepend=0 so that the first
-    # waypoint of each section contributes dis[0] NM (which is 0 by convention)
-    seg_dist_list.append(np.diff(dis, prepend=0.0))
+    for sec in route_sections:
+        s   = sec.upper()
+        dis = ds_route[f'dis_{s}'].values   # cumulative distance (NM), starts at 0
+        trans_lat_list.append(ds_route[f'lat_{s}'].values)
+        trans_lon_list.append(ds_route[f'lon_{s}'].values)
+        # np.diff gives the inter-waypoint spacing; prepend=0 so that the first
+        # waypoint of each section contributes dis[0] NM (which is 0 by convention)
+        seg_dist_list.append(np.diff(dis, prepend=0.0))
 
-trans_lat     = np.concatenate(trans_lat_list)
-trans_lon     = np.concatenate(trans_lon_list)
-seg_dist_nm   = np.concatenate(seg_dist_list)   # (n_waypoints,)
-total_dist_nm = sum(
-    float(np.max(ds_route[f'dis_{s.upper()}'].values)) for s in route_sections
-)
-route_label = ''.join(s.upper() for s in route_sections)
+    trans_lat     = np.concatenate(trans_lat_list)
+    trans_lon     = np.concatenate(trans_lon_list)
+    seg_dist_nm   = np.concatenate(seg_dist_list)   # (n_waypoints,)
+    total_dist_nm = sum(
+        float(np.max(ds_route[f'dis_{s.upper()}'].values)) for s in route_sections
+    )
+    route_label = ''.join(s.upper() for s in route_sections)
 
-print(f'  Sections        : {route_sections}  ->  {len(trans_lat)} waypoints')
-print(f'  Total distance  : {total_dist_nm:.1f} nm')
-print(f'  seg_dist_nm     : min={seg_dist_nm.min():.3f}, '
-      f'max={seg_dist_nm.max():.3f}, sum={seg_dist_nm.sum():.1f} nm')
+    print(f'  Sections        : {route_sections}  ->  {len(trans_lat)} waypoints')
+    print(f'  Total distance  : {total_dist_nm:.1f} nm')
+    print(f'  seg_dist_nm     : min={seg_dist_nm.min():.3f}, '
+          f'max={seg_dist_nm.max():.3f}, sum={seg_dist_nm.sum():.1f} nm')
+
+elif route_source == 'text':
+    # ---- Load route from plain-text waypoint file ----
+    route_label = os.path.splitext(os.path.basename(route_file_txt))[0]
+    print(f'Loading route from {route_file_txt} ...')
+
+    wp_lat_list  = []
+    wp_lon_list  = []
+    wp_dist_list = []
+
+    with open(route_file_txt) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) < 3:
+                continue
+            wp_lat_list.append(float(parts[0]))
+            wp_lon_list.append(float(parts[1]))
+            wp_dist_list.append(float(parts[2]))
+
+    trans_lat  = np.array(wp_lat_list)
+    trans_lon  = np.array(wp_lon_list)
+    cumul_dist = np.array(wp_dist_list)
+
+    # Differential distance per waypoint (NM)
+    seg_dist_nm   = np.diff(cumul_dist, prepend=0.0)
+    total_dist_nm = float(np.max(cumul_dist))
+
+    print(f'  Waypoints       : {len(trans_lat)}')
+    print(f'  Total distance  : {total_dist_nm:.1f} nm')
+    print(f'  seg_dist_nm     : min={seg_dist_nm.min():.3f}, '
+          f'max={seg_dist_nm.max():.3f}, sum={seg_dist_nm.sum():.1f} nm')
+    print(f'  Route label     : {route_label}')
+
+else:
+    raise ValueError(f"route_source must be 'netcdf' or 'text'; got '{route_source}'")
 
 print('Building KDTree...')
 tree = KDTree(list(zip(lon_mesh, lat_mesh)))
@@ -226,7 +277,7 @@ print(f'  KDTree ready.  Neighbor index array shape: {inds.shape}')
 
 
 # =============================================================================
-# DATA EXTRACTION LOOP
+# READ AND CACHE RAW RIO DATA (expensive I/O — done once)
 # =============================================================================
 
 def _doy_index(year, month, day):
@@ -247,12 +298,9 @@ def _find_files(vessel_class, years, data_path):
     return records
 
 
-# results[vessel_class] dict holds:
-#   'years'                    : list of int year values actually found
-#   'min_rio_med/5th/95th'     : route-minimum RIO (used for passability; always min)
-#   'summary_rio_med/5th/95th' : route RIO per rio_summary_method (used for RIO heatmap)
-#   'tt_med/5th/95th'          : segment-integrated transit time (days)
-results = {}
+# raw_rio_data[vessel_class] holds a list of (year, month, rio_med_arr, rio_5th_arr, rio_95th_arr)
+# where each array has shape (n_days_in_month, n_arctic_cells).
+raw_rio_data = {}
 
 for vessel_class in vessel_classes:
     print(f'\n===== {vessel_class} =====')
@@ -262,7 +310,39 @@ for vessel_class in vessel_classes:
         print(f'  WARNING: no files found for {vessel_class} -- skipping.')
         continue
 
-    avail_years  = sorted(set(yr for yr, _, __ in file_records))
+    cached_months = []
+    for yr, mo, fpath in file_records:
+        print(f'  {os.path.basename(fpath)}')
+        ds = xr.open_dataset(fpath)
+
+        rio_med_arr  = ds['timeDaily_avg_RIO_ensembleMedian'].values
+        rio_5th_arr  = ds['timeDaily_avg_RIO_ensemble5th'].values
+        rio_95th_arr = ds['timeDaily_avg_RIO_ensemble95th'].values
+        ds.close()
+
+        cached_months.append((yr, mo, rio_med_arr, rio_5th_arr, rio_95th_arr))
+
+    raw_rio_data[vessel_class] = cached_months
+    print(f'  Done. {len(cached_months)} file(s) cached.')
+
+print('\nRaw data read complete.')
+
+
+# =============================================================================
+# ROUTE-SPECIFIC EXTRACTION (uses cached data + current route/inds)
+# =============================================================================
+
+results = {}
+
+for vessel_class in vessel_classes:
+    if vessel_class not in raw_rio_data:
+        print(f'  WARNING: no cached data for {vessel_class} -- skipping.')
+        continue
+
+    cached_months = raw_rio_data[vessel_class]
+    print(f'\n===== {vessel_class}: extracting route metrics =====')
+
+    avail_years  = sorted(set(yr for yr, _, __, ___, ____ in cached_months))
     n_years      = len(avail_years)
     year_idx_map = {yr: i for i, yr in enumerate(avail_years)}
 
@@ -277,16 +357,7 @@ for vessel_class in vessel_classes:
     tt_5th           = np.full(shape, np.nan)
     tt_95th          = np.full(shape, np.nan)
 
-    for yr, mo, fpath in file_records:
-        print(f'  {os.path.basename(fpath)}')
-        ds = xr.open_dataset(fpath)
-
-        # RIO files are already subsetted to Arctic cells; inds index directly into this space
-        rio_med_arr  = ds['timeDaily_avg_RIO_ensembleMedian'].values
-        rio_5th_arr  = ds['timeDaily_avg_RIO_ensemble5th'].values
-        rio_95th_arr = ds['timeDaily_avg_RIO_ensemble95th'].values
-        ds.close()
-
+    for yr, mo, rio_med_arr, rio_5th_arr, rio_95th_arr in cached_months:
         n_days = rio_med_arr.shape[0]
         yi     = year_idx_map[yr]
 
@@ -330,9 +401,9 @@ for vessel_class in vessel_classes:
         'tt_5th':            tt_5th,
         'tt_95th':           tt_95th,
     }
-    print(f'  Done. {n_years} year(s), {len(file_records)} file(s) processed.')
+    print(f'  Done. {n_years} year(s), {len(cached_months)} file(s) processed.')
 
-print('\nData extraction complete.')
+print('\nRoute extraction complete.')
 
 
 # =============================================================================
@@ -392,8 +463,10 @@ def make_heatmap(data, years, vessel_class, stat_label, plot_mode,
         cmap.set_bad(color='lightgrey')
         masked = np.ma.masked_invalid(plot_arr)
         cfg  = VESSEL_CONFIG[vessel_class]
-        vmin = total_dist_nm / cfg['normal_kt'] / 24.0 if total_dist_nm else 0.0
-        vmax = 365.0
+        #vmin = total_dist_nm / cfg['normal_kt'] / 24.0 if total_dist_nm else 0.0
+        #vmax = 365.0
+        vmin = 12.0
+        vmax = 15.0
         im = ax.imshow(masked, aspect='auto', origin='lower',
                        cmap=cmap, vmin=vmin, vmax=vmax,
                        extent=extent, interpolation='none')
@@ -407,7 +480,7 @@ def make_heatmap(data, years, vessel_class, stat_label, plot_mode,
         valid   = masked.compressed()
         abs_max = float(np.nanpercentile(np.abs(valid), 98)) if len(valid) > 0 else 30.0
         im = ax.imshow(masked, aspect='auto', origin='lower',
-                       cmap=cmap, vmin=-abs_max, vmax=abs_max,
+                       cmap=cmap, vmin=-30, vmax=30,
                        extent=extent, interpolation='none')
         cbar = fig.colorbar(im, ax=ax, pad=0.02, fraction=0.03)
         rio_lbl = 'Route-mean RIO' if rio_summary_method == 'mean' else 'Route-minimum RIO (bottleneck)'
@@ -442,7 +515,6 @@ def make_heatmap(data, years, vessel_class, stat_label, plot_mode,
     # ---------------------------------------------------------------------- #
     # Axes formatting
     # ---------------------------------------------------------------------- #
-    # x-axis: tick marks, labels, and vertical lines all at the first day of each month
     tick_positions = [shifted_starts[m] for m in month_order]
     tick_labels    = [_MONTH_NAMES[m] for m in month_order]
     ax.set_xticks(tick_positions)

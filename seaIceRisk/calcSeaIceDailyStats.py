@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""
+calcSeaIceDailyStats.py
+
+Reads monthly MPAS-Sea Ice netCDF files for a set of ensemble members and
+computes daily ensemble statistics (median, 5th and 95th percentile) for
+ice area concentration and ice volume (effective thickness) across all members.
+Results are written to monthly netCDF output files.
+
+Usage:
+    python calcSeaIceDailyStats.py
+"""
+
+
+import numpy as np
+import xarray
+import os
+
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+# list of ensembles to read in and calc stats on
+#ensembles = ['0051', '0101', '0111', '0121', '0131',
+#             '0141', '0151', '0161', '0171', '0181',
+#             '0191', '0201', '0211', '0221', '0231',
+#             '0241', '0251', '0261', '0271', '0281',
+#             '0301', '0311' ]
+ensembles = ['0051', '0101', '0111']
+
+#years = [ str(y) for y in range(2000, 2005) ]
+years = [ '2000' ]
+
+#months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+months = [ '05' ]
+
+pathBase = '/lustre/scratch5/sprice/'
+
+prefix = 'v3.LR.historical_'
+dirs = '/hist/'
+mpassiPrefix = '.mpassi.hist.am.timeSeriesStatsDaily.'
+
+writePath = pathBase + 'data/v3.LR.historical_thkConc_ensembleStatsNEW'
+
+# Path to the MPAS mesh file ?~@~T used only to read latCell for spatial filtering.
+# The mesh is the same horizontal grid shared by all ensemble members.
+mesh_file = pathBase + 'data/mpaso-IcoswISC30E3r5-restart.nc'
+
+# Restrict output to cells at or north of this latitude (degrees N).
+# Set to None to include all cells globally.
+lat_min_deg = 60.0
+
+# ---------------------------------------------------------------------------
+# Load MPAS mesh and build northern-hemisphere cell index mask
+# ---------------------------------------------------------------------------
+
+os.chdir(pathBase)
+
+rad2deg = 180.0 / np.pi
+print('Loading MPAS mesh for spatial filtering...')
+with xarray.open_dataset(mesh_file) as ds_mesh:
+    lat_cell_full = ds_mesh.latCell.values * rad2deg  # radians -> degrees
+
+if lat_min_deg is not None:
+    ind_north = np.where(lat_cell_full >= lat_min_deg)[0]
+    print(f'  Total mesh cells        : {len(lat_cell_full):,}')
+    print(f'  Cells >= {lat_min_deg} deg N : {len(ind_north):,}')
+else:
+    ind_north = np.arange(len(lat_cell_full))
+    print(f'  No spatial filter applied; total mesh cells: {len(ind_north):,}')
+
+# ---------------------------------------------------------------------------
+# Main processing loop
+# ---------------------------------------------------------------------------
+
+os.chdir(pathBase)
+print('Output directory:', writePath)
+
+# calc. ensemble stats by looping over years, months, and ensemble members
+# (resulting outputs will be written to monthly netcdf files, as per the
+# single ensemble datasets being read in)
+for year in years:
+
+    for month in months:
+
+        index = 0
+
+        for ensemble in ensembles:
+
+            # build path and filename for this ensemble member / month
+            fileBase = pathBase + prefix + ensemble + dirs
+            file = prefix + ensemble + mpassiPrefix + year + '-' + month + '-01.nc'
+
+            # read in file and relevant vars; use context manager to ensure
+            # file handle is released after the block
+            print('reading IN file: ', fileBase + file)
+            with xarray.open_dataset(fileBase + file) as dataIn:
+
+                concentration = dataIn.timeDaily_avg_iceAreaCell.values[:, ind_north]
+                thickness = dataIn.timeDaily_avg_iceVolumeCell.values[:, ind_north]
+                # can also read in other fields here (snow volume, u,v vel
+                # components) if needed ...
+
+                if index == 0:
+                    # on first ensemble member: get dimensions, preserve the
+                    # actual time coordinate from the input file, and allocate
+                    # storage arrays
+                    ndays = np.size(thickness, axis=0)
+                    ncells = np.size(thickness, axis=1)
+                    time_coord = dataIn.Time.values  # preserves actual datetime values
+                    concentrationArray = np.zeros([len(ensembles), ndays, ncells])
+                    thicknessArray = np.zeros([len(ensembles), ndays, ncells])
+
+                concentrationArray[index, :, :] = concentration
+                thicknessArray[index, :, :] = thickness
+                index += 1
+
+        # calc monthly stats (median, 5th, 95th percentile) across ensemble members
+        concentrationMedian = np.median(concentrationArray, axis=0)
+        concentration5th    = np.percentile(concentrationArray, 5,  axis=0)
+        concentration25th    = np.percentile(concentrationArray, 25,  axis=0)
+        concentration75th    = np.percentile(concentrationArray, 75,  axis=0)
+        concentration95th   = np.percentile(concentrationArray, 95, axis=0)
+
+        thicknessMedian = np.median(thicknessArray, axis=0)
+        thickness5th    = np.percentile(thicknessArray, 5,  axis=0)
+        thickness25th    = np.percentile(thicknessArray, 25,  axis=0)
+        thickness75th    = np.percentile(thicknessArray, 75,  axis=0)
+        thickness95th   = np.percentile(thicknessArray, 95, axis=0)
+
+        # write monthly ensemble stats back out to (monthly) .nc file
+        cells  = np.arange(1, ncells + 1)
+        coords = {'Time': time_coord, 'nCells': cells}
+        dims   = ('Time', 'nCells')
+
+        timeDaily_avg_iceAreaCell_ensembleMedian = xarray.DataArray(
+            data=concentrationMedian, coords=coords, dims=dims,
+            name='timeDaily_avg_iceAreaCell_ensembleMedian')
+        timeDaily_avg_iceAreaCell_ensemble5th = xarray.DataArray(
+            data=concentration5th, coords=coords, dims=dims,
+            name='timeDaily_avg_iceAreaCell_ensemble5th')
+        timeDaily_avg_iceAreaCell_ensemble25th = xarray.DataArray(
+            data=concentration25th, coords=coords, dims=dims,
+            name='timeDaily_avg_iceAreaCell_ensemble25th')
+        timeDaily_avg_iceAreaCell_ensemble75th = xarray.DataArray(
+            data=concentration75th, coords=coords, dims=dims,
+            name='timeDaily_avg_iceAreaCell_ensemble75th')
+        timeDaily_avg_iceAreaCell_ensemble95th = xarray.DataArray(
+            data=concentration95th, coords=coords, dims=dims,
+            name='timeDaily_avg_iceAreaCell_ensemble95th')
+
+        timeDaily_avg_iceVolumeCell_ensembleMedian = xarray.DataArray(
+            data=thicknessMedian, coords=coords, dims=dims,
+            name='timeDaily_avg_iceVolumeCell_ensembleMedian')
+        timeDaily_avg_iceVolumeCell_ensemble5th = xarray.DataArray(
+            data=thickness5th, coords=coords, dims=dims,
+            name='timeDaily_avg_iceVolumeCell_ensemble5th')
+        timeDaily_avg_iceVolumeCell_ensemble25th = xarray.DataArray(
+            data=thickness25th, coords=coords, dims=dims,
+            name='timeDaily_avg_iceVolumeCell_ensemble25th')
+        timeDaily_avg_iceVolumeCell_ensemble75th = xarray.DataArray(
+            data=thickness75th, coords=coords, dims=dims,
+            name='timeDaily_avg_iceVolumeCell_ensemble75th')
+        timeDaily_avg_iceVolumeCell_ensemble95th = xarray.DataArray(
+            data=thickness95th, coords=coords, dims=dims,
+            name='timeDaily_avg_iceVolumeCell_ensemble95th')
+
+        dataOut = xarray.Dataset({
+            'timeDaily_avg_iceAreaCell_ensembleMedian':   timeDaily_avg_iceAreaCell_ensembleMedian,
+            'timeDaily_avg_iceAreaCell_ensemble5th':      timeDaily_avg_iceAreaCell_ensemble5th,
+            'timeDaily_avg_iceAreaCell_ensemble25th':      timeDaily_avg_iceAreaCell_ensemble25th,
+            'timeDaily_avg_iceAreaCell_ensemble75th':      timeDaily_avg_iceAreaCell_ensemble75th,
+            'timeDaily_avg_iceAreaCell_ensemble95th':     timeDaily_avg_iceAreaCell_ensemble95th,
+            'timeDaily_avg_iceVolumeCell_ensembleMedian': timeDaily_avg_iceVolumeCell_ensembleMedian,
+            'timeDaily_avg_iceVolumeCell_ensemble5th':    timeDaily_avg_iceVolumeCell_ensemble5th,
+            'timeDaily_avg_iceVolumeCell_ensemble25th':    timeDaily_avg_iceVolumeCell_ensemble25th,
+            'timeDaily_avg_iceVolumeCell_ensemble75th':    timeDaily_avg_iceVolumeCell_ensemble75th,
+            'timeDaily_avg_iceVolumeCell_ensemble95th':   timeDaily_avg_iceVolumeCell_ensemble95th,
+        })
+
+        fileOut = writePath + '/' + prefix + 'EnsStats' + mpassiPrefix + year + '-' + month + '-01.nc'
+        print('writing OUT file: ', fileOut)
+        dataOut.to_netcdf(fileOut)
+
+        # clean up for next month
+        del dataOut, fileOut
+        del concentrationArray, thicknessArray, concentration, thickness, ndays, ncells
+        del time_coord, cells, coords, dims
+        del concentrationMedian, concentration5th, concentration95th
+        del thicknessMedian, thickness5th, thickness95th
+        del timeDaily_avg_iceAreaCell_ensembleMedian, \
+            timeDaily_avg_iceAreaCell_ensemble5th, \
+            timeDaily_avg_iceAreaCell_ensemble25th, \
+            timeDaily_avg_iceAreaCell_ensemble75th, \
+            timeDaily_avg_iceAreaCell_ensemble95th
+        del timeDaily_avg_iceVolumeCell_ensembleMedian, \
+            timeDaily_avg_iceVolumeCell_ensemble5th, \
+            timeDaily_avg_iceVolumeCell_ensemble25th, \
+            timeDaily_avg_iceVolumeCell_ensemble75th, \
+            timeDaily_avg_iceVolumeCell_ensemble95th
+
+
