@@ -167,7 +167,7 @@ DPI = 300   # figure resolution for saved PNGs
 
 #MAP_VRANGE_OVERRIDES = {}   # empty → use auto-scaling for all variables
 MAP_VRANGE_OVERRIDES = {
-    'iceRunoffFlux': (0.0, 4e-24),
+    'iceRunoffFlux': (0.0, 2e-5),
 }
 
 # ---------------------------------------------------------------------------
