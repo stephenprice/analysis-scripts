@@ -103,6 +103,12 @@ MAP_LON_MAX = None   # eastern  limit  (degrees_east)
 #MAP_LON_MIN = -25.0   # western  limit  (degrees_east, range −180 to 180)
 #MAP_LON_MAX = -13.0   # eastern  limit  (degrees_east)
 
+# test focus area: zoom to Amery region, EAIS
+#MAP_LAT_MIN = -75.0    # southern limit  (degrees_north)
+#MAP_LAT_MAX = -65.0    # northern limit  (degrees_north)
+#MAP_LON_MIN = 60.0   # western  limit  (degrees_east, range −180 to 180)
+#MAP_LON_MAX = 120.0   # eastern  limit  (degrees_east)
+
 # ---------------------------------------------------------------------------
 # Date range filtering
 #
