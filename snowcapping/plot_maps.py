@@ -35,10 +35,8 @@ Files are saved to:
 Rendering approach
 ------------------
 - MPAS unstructured-mesh variables (iceAreaCell, iceRunoffFlux, riverRunoffFlux)
-  are rendered using matplotlib's tripcolor with a masked Delaunay triangulation.
-  Triangles whose edges exceed 2× the median cell spacing are masked out, which
-  naturally prevents data from being drawn across land masses or across the
-  date-line.  This ensures sea ice and fluxes only appear over ocean cells.
+  are rendered on their native cell polygons from the restart mesh. Each cell
+  retains its own value, with no interpolation or edge-length masking.
 
 - ELM regular-grid variables (QSNWCPICE, SNO_T_davg) are rendered directly with
   pcolormesh on their native 2-D lat/lon grid — no interpolation.
@@ -54,13 +52,14 @@ Edit config.py to change run directories, map extent, or output location.
 import os
 import re
 import sys
+from datetime import timedelta
 
 import numpy as np
 import xarray as xr
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import matplotlib.tri as mtri
+from matplotlib.collections import PolyCollection
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
@@ -291,20 +290,31 @@ def _elm_decode_months(ds, tdim):
     Return {time_index: month_int} for every time step in *ds* by decoding
     the ELM time coordinate (units / calendar attributes).
 
-    ELM monthly history files often contain all 12 months in a single file
-    (time values = days since reference, noleap calendar).  cftime is used
-    to decode the values; returns an empty dict if decoding fails.
+    Use averaging-interval midpoints, not the endpoint timestamps written by
+    ELM. Without bounds, an exact month-start timestamp belongs to the preceding
+    month. Decode with the file's calendar, including noleap calendars.
     """
-    try:
-        import cftime
-        time_var = ds[tdim]
-        units    = time_var.attrs.get('units', '')
-        calendar = time_var.attrs.get('calendar', 'standard')
-        dates    = cftime.num2date(time_var.values, units, calendar)
-        return {i: int(d.month) for i, d in enumerate(dates)}
-    except Exception as exc:
-        print(f"  Warning: could not decode ELM time axis ({exc})")
+    import cftime
+    time_var = ds[tdim]
+    units = time_var.attrs.get('units')
+    if not units:
+        print("  Warning: ELM time axis has no units; cannot decode months.")
         return {}
+    calendar = time_var.attrs.get('calendar', 'standard')
+    bounds_name = time_var.attrs.get('bounds', 'time_bounds')
+    if bounds_name in ds:
+        bounds = ds[bounds_name].transpose(tdim, ...).values
+        if bounds.shape != (time_var.size, 2) or not np.all(np.isfinite(bounds)):
+            raise ValueError(f"Invalid ELM time bounds: {bounds_name}")
+        if np.any(bounds[:, 1] <= bounds[:, 0]):
+            raise ValueError(f"Non-positive ELM averaging intervals: {bounds_name}")
+        dates = cftime.num2date(bounds.mean(axis=1), units, calendar)
+    else:
+        dates = cftime.num2date(time_var.values, units, calendar)
+        dates = [d - timedelta(seconds=1)
+                 if (d.day, d.hour, d.minute, d.second, d.microsecond)
+                 == (1, 0, 0, 0, 0) else d for d in dates]
+    return {i: int(d.month) for i, d in enumerate(dates)}
 
 
 def load_elm_monthly(run_dir, stream, var_name, depth_dim=None):
@@ -313,9 +323,9 @@ def load_elm_monthly(run_dir, stream, var_name, depth_dim=None):
 
     Handles both the common case where each file holds a single month and
     the case where a single file contains all 12 months (time dim > 1).
-    The month for each record is determined by decoding the time coordinate
-    via cftime; the filename-derived month is used as a fallback for
-    single-record files.
+    The month for each record is determined from the averaging interval via
+    cftime; the filename-derived month is a fallback for single-record files
+    without decodable time coordinates.
 
     depth_dim : if not None, the named dimension is averaged over with
                 nanmean (used for SNO_T levsno depth-averaging).
@@ -385,12 +395,13 @@ def load_elm_monthly(run_dir, stream, var_name, depth_dim=None):
                         print(f"  Warning: depth dim '{depth_dim}' not found; "
                               f"using data as-is (dims={list(da.dims)}).")
 
-        # Map each time index to its calendar month.
-        # When a file holds multiple months, decode from the time coordinate.
-        if tdim is not None and da.sizes[tdim] > 1:
+        if tdim is not None:
             ti_to_month = _elm_decode_months(ds, tdim)
-        elif tdim is not None:
-            ti_to_month = {0: fname_month}
+            if not ti_to_month:
+                if da.sizes[tdim] != 1:
+                    raise ValueError(f"Cannot determine monthly intervals in {fpath}")
+                print(f"  Warning: using filename month for {os.path.basename(fpath)}")
+                ti_to_month = {0: fname_month}
         else:
             ti_to_month = {None: fname_month}   # no time dimension at all
 
@@ -425,56 +436,41 @@ def load_elm_monthly(run_dir, stream, var_name, depth_dim=None):
 
 
 # ---------------------------------------------------------------------------
-# MPAS triangulation helper
+# MPAS native cell geometry
 # ---------------------------------------------------------------------------
 
-def _build_masked_triangulation(lat, lon):
-    """
-    Build a matplotlib Triangulation from MPAS cell centers (lat, lon in
-    degrees) with a mask that removes:
-      - Triangles spanning the date-line (huge edge in longitude)
-      - Triangles spanning land masses (edges much larger than typical cell
-        spacing)
-
-    The edge-length threshold is set to 2× the median edge length of the
-    Delaunay triangulation, which adapts automatically to any mesh resolution.
-
-    Returns a matplotlib.tri.Triangulation object (reusable across all months
-    for the same mesh).
-    """
-    tri = mtri.Triangulation(lon, lat)
-    triangles = tri.triangles  # (N_tri, 3) indices
-
-    # Compute edge lengths (in degrees) for each triangle
-    x, y = lon, lat
-    x0 = x[triangles[:, 0]]; x1 = x[triangles[:, 1]]; x2 = x[triangles[:, 2]]
-    y0 = y[triangles[:, 0]]; y1 = y[triangles[:, 1]]; y2 = y[triangles[:, 2]]
-
-    # Compute squared edge lengths (sufficient for comparison)
-    dx01 = x1 - x0; dy01 = y1 - y0
-    dx12 = x2 - x1; dy12 = y2 - y1
-    dx20 = x0 - x2; dy20 = y0 - y2
-
-    edge2_01 = dx01**2 + dy01**2
-    edge2_12 = dx12**2 + dy12**2
-    edge2_20 = dx20**2 + dy20**2
-
-    max_edge2 = np.maximum(np.maximum(edge2_01, edge2_12), edge2_20)
-
-    # Threshold: 2× median edge length (squared for comparison)
-    all_edge2 = np.concatenate([edge2_01, edge2_12, edge2_20])
-    median_edge = np.sqrt(np.median(all_edge2))
-    threshold = (2.0 * median_edge) ** 2
-
-    # Mask triangles with any edge exceeding threshold
-    mask = max_edge2 > threshold
-    tri.set_mask(mask)
-
-    n_masked = mask.sum()
-    n_total  = len(triangles)
-    print(f"    Triangulation: {len(lat)} points, {n_total} triangles, "
-          f"{n_masked} masked ({100*n_masked/n_total:.1f}%)")
-    return tri
+def _load_mpas_cell_polygons(run_dir, component, cell_lon):
+    """Return native polygons and their data indices, including seam copies."""
+    files = utils.find_files(run_dir, f'*.{component}.rst.*.nc', required=False)
+    files = [f for f in files if '.rst.am.' not in f]
+    if not files:
+        raise RuntimeError(f"No {component} restart mesh found in {run_dir}")
+    with xr.open_dataset(files[0], decode_times=False, mask_and_scale=False) as ds:
+        counts = ds['nEdgesOnCell'].values.astype(int)
+        vertices = ds['verticesOnCell'].values.astype(int) - 1
+        vertex_lat = utils.rad_to_deg_if_needed(ds['latVertex'].values)
+        vertex_lon = utils.rad_to_deg_if_needed(ds['lonVertex'].values)
+    if len(counts) != len(cell_lon) or vertices.shape[0] != len(cell_lon):
+        raise ValueError("MPAS polygon and cell-coordinate counts differ")
+    if np.any((counts < 3) | (counts > vertices.shape[1])):
+        raise ValueError("Invalid MPAS nEdgesOnCell")
+    # Repeat the final real vertex in padding slots (MPAS indices are 1-based).
+    slots = np.minimum(np.arange(vertices.shape[1])[None, :], counts[:, None] - 1)
+    vertices = np.take_along_axis(vertices, slots, axis=1)
+    if np.any((vertices < 0) | (vertices >= len(vertex_lat))):
+        raise ValueError("Invalid MPAS verticesOnCell connectivity")
+    lon = cell_lon[:, None] + utils.normalize_lon(vertex_lon[vertices] - cell_lon[:, None])
+    polygons = np.stack((lon, vertex_lat[vertices]), axis=-1)
+    indices = np.arange(len(cell_lon))
+    pieces, cell_indices = [polygons], [indices]
+    for crossing, shift in ((lon.max(axis=1) > 180, -360),
+                            (lon.min(axis=1) < -180, 360)):
+        copies = polygons[crossing].copy()
+        copies[:, :, 0] += shift
+        pieces.append(copies)
+        cell_indices.append(indices[crossing])
+    print(f"    Native polygons: {len(cell_lon)} cells")
+    return np.concatenate(pieces), np.concatenate(cell_indices)
 
 
 # ---------------------------------------------------------------------------
@@ -531,8 +527,8 @@ def _compute_vrange(all_data_arrays, fixed_vmin=None, fixed_vmax=None):
 # Per-variable map generation
 # ---------------------------------------------------------------------------
 
-def _render_panel(ax, lat_d, lon_d, data_d, source_type, tri_cache,
-                  cache_key, var_name, proj, cmap, vmin, vmax,
+def _render_panel(ax, lat_d, lon_d, data_d, source_type, polygon_cache,
+                  cache_key, proj, cmap, vmin, vmax,
                   mask_threshold=None):
     """
     Render data onto a single map axes panel.  Returns the mappable or None.
@@ -545,41 +541,21 @@ def _render_panel(ax, lat_d, lon_d, data_d, source_type, tri_cache,
         data_d = data_d.copy()
         data_d[data_d <= mask_threshold] = np.nan
     if source_type == 'unstructured':
-        # --- MPAS: tripcolor with masked triangulation ---
-        tri_key = (cache_key, var_name, id(lat_d))
-        if tri_key not in tri_cache:
-            tri_cache[tri_key] = _build_masked_triangulation(lat_d, lon_d)
-        tri = tri_cache[tri_key]
-
-        plot_data = data_d.copy()
-        nan_mask = ~np.isfinite(plot_data)
-        plot_data[nan_mask] = 0.0
-
-        tri_verts = tri.triangles
-        # When mask_threshold is active, hide any triangle touching a masked
-        # cell (any vertex NaN) to avoid diluted edge colours.  Otherwise
-        # use the original all-NaN criterion (only hides fully-missing data).
-        if mask_threshold is not None:
-            any_nan = (nan_mask[tri_verts[:, 0]]
-                       | nan_mask[tri_verts[:, 1]]
-                       | nan_mask[tri_verts[:, 2]])
-            tri_nan_mask = any_nan
-        else:
-            all_nan = (nan_mask[tri_verts[:, 0]]
-                       & nan_mask[tri_verts[:, 1]]
-                       & nan_mask[tri_verts[:, 2]])
-            tri_nan_mask = all_nan
-        combined_mask = tri.mask | tri_nan_mask if tri.mask is not None else tri_nan_mask
-
-        tri_local = mtri.Triangulation(tri.x, tri.y, tri.triangles)
-        tri_local.set_mask(combined_mask)
-
-        im = ax.tripcolor(tri_local, plot_data,
-                          transform=proj,
-                          cmap=cmap,
-                          vmin=vmin, vmax=vmax,
-                          shading='flat',
-                          zorder=1)
+        polygons, indices = polygon_cache[cache_key]
+        if data_d.shape != lat_d.shape:
+            raise ValueError("MPAS data and mesh cell counts differ")
+        west, east, south, north = ax.get_extent(crs=proj)
+        visible = ((polygons[:, :, 0].max(axis=1) >= west)
+                   & (polygons[:, :, 0].min(axis=1) <= east)
+                   & (polygons[:, :, 1].max(axis=1) >= south)
+                   & (polygons[:, :, 1].min(axis=1) <= north)
+                   & np.isfinite(data_d[indices]))
+        im = PolyCollection(polygons[visible],
+                            array=data_d[indices[visible]],
+                            transform=proj, cmap=cmap, edgecolors='none',
+                            antialiaseds=False, zorder=1)
+        im.set_clim(vmin, vmax)
+        ax.add_collection(im)
         return im
 
     else:
@@ -607,7 +583,7 @@ def _render_panel(ax, lat_d, lon_d, data_d, source_type, tri_cache,
 def plot_variable(var_name, long_name, units, cmap,
                   fix_data, ctrl_data, source_type,
                   lat_min, lat_max, lon_min, lon_max,
-                  output_dir, tri_cache,
+                  output_dir, polygon_cache,
                   fixed_vmin=None, fixed_vmax=None,
                   show_diff=False, diff_cmap='RdBu_r',
                   mask_threshold=None):
@@ -634,7 +610,7 @@ def plot_variable(var_name, long_name, units, cmap,
         For source_type='gridded' (ELM):
             tuple = (lat_1d, lon_1d, data_2d)
     source_type : 'unstructured' or 'gridded'
-    tri_cache : dict — built lazily for MPAS triangulations
+    polygon_cache : dict keyed by run label, containing native MPAS geometry
     fixed_vmin, fixed_vmax : optional hard colour bounds
     show_diff : if True, add a third panel showing fix − control
     diff_cmap : colormap for the difference panel
@@ -724,7 +700,7 @@ def plot_variable(var_name, long_name, units, cmap,
             else:
                 lat_d, lon_d, data_d = sim_data[month]
                 im = _render_panel(ax, lat_d, lon_d, data_d, source_type,
-                                   tri_cache, cache_key, var_name, proj,
+                                   polygon_cache, cache_key, proj,
                                    cmap, vmin, vmax,
                                    mask_threshold=mask_threshold)
                 if im is not None and mappable is None:
@@ -764,8 +740,9 @@ def plot_variable(var_name, long_name, units, cmap,
                     dvm = diff_vmax_abs if diff_vmax_abs else 1.0
                     im_diff = _render_panel(
                         ax_diff, lat_f, lon_f, diff_data, source_type,
-                        tri_cache, 'fix', var_name, proj,
-                        diff_cmap, -dvm, dvm)
+                        polygon_cache, 'fix', proj,
+                    #    diff_cmap, -dvm, dvm)
+                        diff_cmap, -3.0, 3.0)
                     diff_mappable = im_diff
                 else:
                     ax_diff.text(0.5, 0.5, 'shape mismatch',
@@ -808,14 +785,15 @@ def load_variable(run_dir, var_def, mesh_cache):
     """
     Route loading to the correct reader based on var_def['source'].
 
-    mesh_cache : dict keyed by (run_dir, component) → (lat, lon) tuples for
+    mesh_cache : dict keyed by (run_dir, component) → (lat, lon, polygons) for
                  each MPAS component; populated lazily on first access.
 
     Returns
     -------
-    (data_dict, source_type)
+    (data_dict, source_type, polygons)
         data_dict   : month_int → tuple (see load_mpas_monthly / load_elm_monthly)
         source_type : 'unstructured' (MPAS) or 'gridded' (ELM)
+        polygons    : native MPAS geometry, or None for ELM
     """
     src = var_def['source']
     if src in ('mpassi', 'mpaso'):
@@ -827,11 +805,12 @@ def load_variable(run_dir, var_def, mesh_cache):
                     lat, lon, _ = utils.load_mpassi_mesh(run_dir)
                 else:
                     lat, lon, _ = utils.load_mpaso_mesh(run_dir)
-                mesh_cache[cache_key] = (lat, lon)
+                polygons = _load_mpas_cell_polygons(run_dir, src, lon)
+                mesh_cache[cache_key] = (lat, lon, polygons)
             except RuntimeError as exc:
                 print(f"  Error loading mesh: {exc}")
-                return {}, 'unstructured'
-        mesh_lat, mesh_lon = mesh_cache[cache_key]
+                return {}, 'unstructured', None
+        mesh_lat, mesh_lon, polygons = mesh_cache[cache_key]
         data = load_mpas_monthly(
             run_dir,
             var_def['file_pattern'],
@@ -839,7 +818,7 @@ def load_variable(run_dir, var_def, mesh_cache):
             mesh_lat,
             mesh_lon,
         )
-        return data, 'unstructured'
+        return data, 'unstructured', polygons
     elif src in ('elm_h0', 'elm_h2'):
         data = load_elm_monthly(
             run_dir,
@@ -847,9 +826,9 @@ def load_variable(run_dir, var_def, mesh_cache):
             var_def['var_name'],
             depth_dim=var_def.get('depth_dim'),
         )
-        return data, 'gridded'
+        return data, 'gridded', None
     print(f"  Warning: unknown source '{src}' for variable '{var_def['name']}'")
-    return {}, 'unstructured'
+    return {}, 'unstructured', None
 
 
 # ---------------------------------------------------------------------------
@@ -872,10 +851,6 @@ def main():
     # (run_dir, component) pair is encountered, then reused across variables.
     mesh_cache = {}
 
-    # Triangulation cache: populated lazily per (run_label, var_name, mesh_id);
-    # reused across months for the same mesh.
-    tri_cache = {}
-
     # Filter variables if user specified a subset in config
     vars_to_plot = getattr(config, 'MAP_VARIABLES_TO_PLOT', None)
     if vars_to_plot is not None:
@@ -892,9 +867,11 @@ def main():
         print(f"Variable: {vname}")
 
         print(f"  Loading fix run…")
-        fix_data, source_type = load_variable(config.FIX_RUN_DIR, var_def, mesh_cache)
+        fix_data, source_type, fix_polygons = load_variable(
+            config.FIX_RUN_DIR, var_def, mesh_cache)
         print(f"  Loading ctrl run…")
-        ctrl_data, _ = load_variable(config.CTRL_RUN_DIR, var_def, mesh_cache)
+        ctrl_data, _, ctrl_polygons = load_variable(
+            config.CTRL_RUN_DIR, var_def, mesh_cache)
 
         # Apply date-range filter from config.
         # Both MPAS and ELM loaders in plot_maps return dicts keyed by
@@ -935,7 +912,7 @@ def main():
             lat_min=lat_min, lat_max=lat_max,
             lon_min=lon_min, lon_max=lon_max,
             output_dir  = config.OUTPUT_DIR,
-            tri_cache   = tri_cache,
+            polygon_cache = {'fix': fix_polygons, 'ctrl': ctrl_polygons},
             fixed_vmin  = fv_min,
             fixed_vmax  = fv_max,
             show_diff   = (vname == 'SNO_T_davg'),

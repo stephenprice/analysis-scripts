@@ -1,0 +1,20 @@
+Comparison of one month (Jan), focus on Ant., for 70 deg threshold (hoping to
+see impacts of energy extraction in deep snowpack in Ant, like we were prev
+seeing in S. Greenland),
+
+Monthly map notes
+-----------------
+ELM monthly records are labeled using the midpoint of time_bounds. The time
+coordinate itself is the interval endpoint (e.g. February 1 for January's
+average), so using its month would shift every map by one month. This also
+applies when a file contains only one record. Without bounds, an exact
+month-start endpoint is assigned to the preceding month.
+
+MPAS maps use native cell polygons from restart-file verticesOnCell,
+nEdgesOnCell, latVertex, and lonVertex. Values are not interpolated between
+cell centers. This avoids the artificial gaps produced by a global edge-length
+cutoff on a longitude/latitude Delaunay triangulation, especially at high
+latitudes. Light blue is the ocean background, not a runoff-flux value.
+
+Run plot_maps.py in the E3SM unified environment to regenerate the configured
+maps. Existing figures with the same output names are overwritten.
